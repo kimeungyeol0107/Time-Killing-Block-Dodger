@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>시간 순삭 블럭 피하기</title>
+
+<style>
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    background: #111;
+    color: white;
+    font-family: Arial, sans-serif;
+    text-align: center;
+    overflow: hidden;
+}
+
+h1 { margin: 15px 0 8px; }
+
+#info {
+    display: flex;
+    justify-content: center;
+    gap: 18px;
+    margin: 12px;
+    font-size: 16px;
+}
+
+canvas {
+    display: block;
+    margin: auto;
+    background: #202020;
+    border: 2px solid #666;
+    width: min(94vw, 420px);
+    height: auto;
+    touch-action: none;
+    transform-origin: center center;
+}
+
+.controls {
+    display: flex;
+    justify-content: center;
+    gap: 25px;
+    margin: 12px;
+}
+
+button {
+    background: #333;
+    color: white;
+    border: 1px solid #888;
+    border-radius: 10px;
+    padding: 14px 35px;
+    font-size: 20px;
+    cursor: pointer;
+}
+
+button:active { background: #666; }
+
+#message {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000b;
+}
+
+#panel {
+    background: #222;
+    padding: 25px;
+    border: 1px solid #777;
+    border-radius: 15px;
+    width: 85%;
+    max-width: 330px;
+}
+
+#panel p { line-height: 1.7; }
+
+#mobileNotice {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: #000d;
+}
+
+#mobileNoticePanel {
+    background: #222;
+    padding: 25px;
+    border: 1px solid #777;
+    border-radius: 15px;
+    width: 85%;
+    max-width: 360px;
+    line-height: 1.7;
+}
+</style>
+</head>
+
+<body>
+
+<h1>시간 순삭 블럭 피하기</h1>
+
+<div id="info">
+    <span>점수: <b id="score">0</b></span>
+    <span>단계: <b id="stage">1</b></span>
+    <span>목숨: <b id="life">3/3</b></span>
+</div>
+
+<canvas id="game" width="420" height="600"></canvas>
+
+<div class="controls">
+    <button id="left">◀</button>
+    <button id="right">▶</button>
+</div>
+
+<div id="mobileNotice">
+    <div id="mobileNoticePanel">
+        <h2>안내</h2>
+        <p>
+            본 게임은 pc에 최적화 되어 있습니다.<br>
+            모바일의 경우 6단계 플레이가 어려울수 있습니다
+        </p>
+        <button id="closeMobileNotice">확인</button>
+    </div>
+</div>
+
+<div id="message">
+    <div id="panel">
+        <h2 id="messageTitle">시간 순삭 블럭 피하기</h2>
+        <p id="messageText">
+            *전체화면 권장*<br>
+            떨어지는 블럭을 피하세요!<br>
+            목숨이 0이 되면 게임 오버입니다.<br><br>
+            PC: A / D 또는 방향키
+        </p>
+        <button id="start">게임 시작</button>
+    </div>
+</div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const W = 420;
+const H = 600;
+const LANES = 7;
+const CELL = 60;
+const BLOCK_HEIGHT = 50;
+
+let score = 0;
+let lives = 3;
+let stage = 1;
+let blocks = [];
+let running = false;
+let lastTime = 0;
+
+// 5단계 이벤트
+let stage5Timer = 5;
+let bossActive = false;
+
+// 6단계 회전
+let rotationTime = 0;
+
+// 10단계 미션
+let stage10Active = false;
+let stage10TargetLane = -1;
+let stage10Timer = 10;
+
+const player = {
+    lane: 3,
+    x: 185,
+    y: 525,
+    width: 50,
+    height: 50
+};
+
+// 단계별 블럭 생성 횟수
+let spawnCounts = {
+    1: [0, 0],
+    2: [0, 0],
+    3: [0, 0],
+    4: [0],
+    5: [0],
+    6: [0],
+    7: [0],
+    8: [0],
+    9: [0],
+    10: [0]
+};
+
+// 단계 판정
+function getStage() {
+    if (score >= 1600) return 10;
+    if (score >= 1400) return 9;
+    if (score >= 1200) return 8;
+    if (score >= 1000) return 7;
+    if (score >= 750) return 6;
+    if (score >= 550) return 5;
+    if (score >= 400) return 4;
+    if (score >= 250) return 3;
+    if (score >= 100) return 2;
+    return 1;
+}
+
+// 정보 표시
+function updateInfo() {
+    const newStage = getStage();
+
+    if (newStage > stage) {
+        lives = newStage >= 5 ? 4 : 3;
+    }
+
+    stage = newStage;
+
+    const maxLives = stage >= 5 ? 4 : 3;
+
+    document.getElementById("score").textContent =
+        Math.floor(score);
+
+    document.getElementById("stage").textContent =
+        stage;
+
+    document.getElementById("life").textContent =
+        maxLives + "/" + lives;
+}
+
+// 플레이어 이동
+function movePlayer(direction) {
+    if (!running) return;
+
+    player.lane = Math.max(
+        0,
+        Math.min(LANES - 1, player.lane + direction)
+    );
+}
+
+// 키보드 조작
+document.addEventListener("keydown", e => {
+    if (
+        e.key === "ArrowLeft" ||
+        e.key.toLowerCase() === "a"
+    ) {
+        movePlayer(-1);
+    }
+
+    if (
+        e.key === "ArrowRight" ||
+        e.key.toLowerCase() === "d"
+    ) {
+        movePlayer(1);
+    }
+});
+
+// 모바일 버튼
+document.getElementById("left").addEventListener(
+    "click",
+    () => movePlayer(-1)
+);
+
+document.getElementById("right").addEventListener(
+    "click",
+    () => movePlayer(1)
+);
+
+// 블럭 생성
+function spawnBlock(size, options = {}) {
+    const candidates = [];
+
+    for (let lane = 0; lane <= LANES - size; lane++) {
+
+        const newX = lane * CELL + 3;
+        const newWidth = size * CELL - 6;
+        const newY = -BLOCK_HEIGHT;
+        const newBottom = newY + BLOCK_HEIGHT;
+
+        let canSpawn = true;
+
+        for (const b of blocks) {
+            const oldX = b.lane * CELL + 3;
+            const oldWidth = b.size * CELL - 6;
+            const oldTop = b.y;
+            const oldBottom = b.y + BLOCK_HEIGHT;
+
+            const horizontalGap =
+                newX + newWidth + CELL <= oldX ||
+                oldX + oldWidth + CELL <= newX;
+
+            const verticalGap =
+                newBottom + CELL <= oldTop ||
+                oldBottom + CELL <= newY;
+
+            if (!horizontalGap && !verticalGap) {
+                canSpawn = false;
+                break;
+            }
+        }
+
+        if (canSpawn) {
+            candidates.push(lane);
+        }
+    }
+
+    if (candidates.length === 0) return false;
+
+    const lane = candidates[
+        Math.floor(Math.random() * candidates.length)
+    ];
+
+    blocks.push({
+        lane,
+        size,
+        y: -BLOCK_HEIGHT,
+        hit: false,
+        blink: options.blink || false,
+        lethal: options.lethal || false,
+        blinkTime: 0
+    });
+
+    return true;
+}
+
+// 5단계 특수 블럭 이벤트
+function startBossEvent() {
+    blocks = [];
+
+    const lane = Math.floor(Math.random() * 3);
+
+    blocks.push({
+        lane: lane,
+        size: 5,
+        y: -BLOCK_HEIGHT,
+        hit: false,
+        special: true
+    });
+
+    bossActive = true;
+}
+
+// 10단계 노란색 미션 시작
+function startStage10Mission() {
+    stage10Active = true;
+    stage10Timer = 10;
+
+    // 맨 왼쪽 또는 맨 오른쪽 선택
+    stage10TargetLane = Math.random() < 0.5 ? 0 : 6;
+}
+
+// 10단계 목표 도착 확인
+function checkStage10Mission(delta) {
+    if (!stage10Active || !running) return;
+
+    // 목표 칸에 도착하면 새로운 목표 생성
+    if (player.lane === stage10TargetLane) {
+        startStage10Mission();
+        return;
+    }
+
+    // 제한 시간 감소
+    stage10Timer -= delta;
+
+    // 10초 안에 도착하지 못하면 사망
+    if (stage10Timer <= 0) {
+        stage10Timer = 0;
+        lives = 0;
+        updateInfo();
+        gameOver();
+    }
+}
+
+// 단계별 블럭 생성 규칙
+function spawnByScore() {
+    const currentStage = getStage();
+
+    const settings = {
+        1: {
+            start: 0,
+            rules: [
+                {size: 1, interval: 10},
+                {size: 2, interval: 10}
+            ]
+        },
+
+        2: {
+            start: 100,
+            rules: [
+                {size: 1, interval: 7},
+                {size: 2, interval: 9}
+            ]
+        },
+
+        3: {
+            start: 250,
+            rules: [
+                {size: 1, interval: 6},
+                {size: 2, interval: 9}
+            ]
+        },
+
+        4: {
+            start: 400,
+            rules: [
+                {size: 1, interval: 2.5}
+            ]
+        },
+
+        5: {
+            start: 550,
+            rules: [
+                {size: 1, interval: 2.5}
+            ]
+        },
+
+        6: {
+            start: 750,
+            rules: [
+                {size: 1, interval: 2.5}
+            ]
+        },
+
+        7: {
+            start: 1000,
+            rules: [
+                {size: 1, interval: 2.5, blink: true}
+            ]
+        },
+
+        8: {
+            start: 1200,
+            rules: [
+                {size: 1, interval: 2.5, lethal: true}
+            ]
+        },
+
+        9: {
+            start: 1400,
+            rules: [
+                {size: 4, interval: 7}
+            ]
+        },
+
+        10: {
+            start: 1600,
+            rules: [
+                {size: 1, interval: 1.5}
+            ]
+        }
+    };
+
+    const config = settings[currentStage];
+
+    const elapsed = Math.max(
+        0,
+        score - config.start
+    );
+
+    config.rules.forEach((rule, index) => {
+        const count = Math.floor(
+            elapsed / rule.interval
+        );
+
+        const previous = spawnCounts[currentStage][index];
+
+        if (count > previous) {
+            if (spawnBlock(rule.size, rule)) {
+                spawnCounts[currentStage][index] = count;
+            }
+        }
+    });
+}
+
+// 충돌 검사
+function checkCollision(block) {
+    const bx = block.lane * CELL + 3;
+    const bw = block.size * CELL - 6;
+
+    return (
+        player.x < bx + bw &&
+        player.x + player.width > bx &&
+        player.y < block.y + BLOCK_HEIGHT &&
+        player.y + player.height > block.y
+    );
+}
+
+// 화면 그리기
+function draw() {
+    ctx.clearRect(0, 0, W, H);
+
+    // 열 구분선
+    ctx.strokeStyle = "#444";
+    ctx.lineWidth = 1;
+
+    for (let i = 1; i < LANES; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i * CELL, 0);
+        ctx.lineTo(i * CELL, H);
+        ctx.stroke();
+    }
+
+    // 10단계 노란색 목표 블럭
+    if (stage === 10 && stage10Active) {
+        const targetX = stage10TargetLane * CELL + 5;
+
+        ctx.fillStyle = "#ffd400";
+        ctx.fillRect(
+            targetX,
+            player.y,
+            50,
+            50
+        );
+
+        ctx.strokeStyle = "#fff29a";
+        ctx.lineWidth = 3;
+        ctx.strokeRect(
+            targetX,
+            player.y,
+            50,
+            50
+        );
+
+        // 남은 시간 표시
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#ffd400";
+        ctx.font = "bold 30px Arial";
+        ctx.fillText(
+            "시간 안에 노란 블럭 터치 " + Math.ceil(stage10Timer) + "초",
+            W / 2,
+            45
+        );
+    }
+
+    // 플레이어
+    const targetX = player.lane * CELL + 5;
+    player.x += (targetX - player.x) * 0.3;
+
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(
+        player.x,
+        player.y,
+        player.width,
+        player.height
+    );
+
+    // 블럭
+    blocks.forEach(block => {
+        const x = block.lane * CELL + 3;
+        const width = block.size * CELL - 6;
+
+        // 7단계 블럭은 0.5초 동안 안 보임
+        if (
+            block.blink &&
+            Math.floor(block.blinkTime / 0.5) % 2 === 0
+        ) {
+            return;
+        }
+
+        ctx.fillStyle = block.lethal
+            ? "#ff2222"
+            : (block.special ? "#fff" : "#aaa");
+
+        ctx.fillRect(x, block.y, width, BLOCK_HEIGHT);
+
+        ctx.strokeStyle = block.lethal ? "#ff7777" : "#fff";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x, block.y, width, BLOCK_HEIGHT);
+    });
+
+    // 5단계 카운트다운
+    if (stage === 5 && !bossActive) {
+        ctx.textAlign = "center";
+
+        ctx.fillStyle = "rgba(255, 255, 255, 0.65)";
+        ctx.font = "bold 25px Arial";
+        ctx.fillText(
+            "5칸 블럭 등장까지",
+            W / 2,
+            H / 2 - 20
+        );
+
+        ctx.font = "bold 65px Arial";
+        ctx.fillText(
+            Math.ceil(stage5Timer),
+            W / 2,
+            H / 2 + 55
+        );
+    }
+}
+
+// 6단계 진자운동
+function updateRotation(delta) {
+    if (getStage() === 6) {
+        rotationTime += delta;
+
+        const angle =
+            90 * Math.sin((rotationTime / 6) * Math.PI * 2);
+
+        canvas.style.transform = `rotate(${angle}deg)`;
+    } else {
+        canvas.style.transform = "rotate(0deg)";
+        rotationTime = 0;
+    }
+}
+
+// 게임 오버
+function gameOver() {
+    if (!running) return;
+
+    running = false;
+
+    document.getElementById("messageTitle").textContent =
+        "게임 오버!";
+
+    document.getElementById("messageText").textContent =
+        "최종 점수: " + Math.floor(score) + "점";
+
+    document.getElementById("start").textContent =
+        "다시 시작";
+
+    document.getElementById("message").style.display =
+        "flex";
+}
+
+// 게임 진행
+function loop(time) {
+    if (!running) return;
+
+    const delta = Math.min(
+        (time - lastTime) / 1000,
+        0.05
+    );
+
+    lastTime = time;
+
+    // 점수 증가
+    score += delta * 10;
+
+    // 단계와 목숨 업데이트
+    updateInfo();
+
+    const currentStage = getStage();
+
+    // 10단계 진입 시 미션 시작
+    if (currentStage === 10 && !stage10Active) {
+        startStage10Mission();
+    }
+
+    // 10단계 목표 미션 확인
+    if (currentStage === 10) {
+        checkStage10Mission(delta);
+    }
+
+    if (!running) return;
+
+    // 6단계 화면 회전
+    updateRotation(delta);
+
+    // 기본 블럭 속도
+    const speed = 200 + Math.min(score * 0.2, 150);
+
+    // 5단계 이벤트 관리
+    if (currentStage === 5) {
+
+        if (!bossActive) {
+            stage5Timer -= delta;
+
+            if (stage5Timer <= 0) {
+                stage5Timer = 0;
+                startBossEvent();
+            } else {
+                spawnByScore();
+            }
+        }
+
+    } else {
+        // 1~4단계 및 6~10단계 블럭 생성
+        spawnByScore();
+    }
+
+    // 블럭 이동 및 충돌
+    blocks.forEach(block => {
+
+        // 5단계 특수 블럭은 2배
+        // 10단계 일반 블럭은 1.5배
+        const blockSpeed = block.special
+            ? speed * 2
+            : (currentStage === 10 ? speed * 1.5 : speed);
+
+        block.y += blockSpeed * delta;
+
+        if (block.blink) {
+            block.blinkTime += delta;
+        }
+
+        if (!block.hit && checkCollision(block)) {
+            block.hit = true;
+
+            // 8단계 빨간 블럭은 닿으면 즉시 게임 오버
+            if (block.lethal) {
+                lives = 0;
+                updateInfo();
+                gameOver();
+            } else {
+                lives--;
+                updateInfo();
+
+                if (lives <= 0) {
+                    gameOver();
+                }
+            }
+        }
+    });
+
+    // 게임 오버 상태면 종료
+    if (!running) return;
+
+    // 화면 밖 블럭 삭제
+    blocks = blocks.filter(block => block.y < H);
+
+    // 특수 블럭이 완전히 떨어지면 일반 모드 복귀
+    if (bossActive && blocks.length === 0) {
+        bossActive = false;
+        stage5Timer = 5;
+    }
+
+    updateInfo();
+    draw();
+
+    if (running) {
+        requestAnimationFrame(loop);
+    }
+}
+
+// 게임 시작
+function startGame() {
+
+    // 전체 화면 전환
+    if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+        document.documentElement.requestFullscreen().catch(() => {});
+    }
+
+    score = 0;
+    lives = 3;
+    stage = 1;
+    blocks = [];
+
+    stage5Timer = 5;
+    bossActive = false;
+
+    rotationTime = 0;
+    canvas.style.transform = "rotate(0deg)";
+
+    // 10단계 미션 초기화
+    stage10Active = false;
+    stage10TargetLane = -1;
+    stage10Timer = 10;
+
+    spawnCounts = {
+        1: [0, 0],
+        2: [0, 0],
+        3: [0, 0],
+        4: [0],
+        5: [0],
+        6: [0],
+        7: [0],
+        8: [0],
+        9: [0],
+        10: [0]
+    };
+
+    player.lane = 3;
+    player.x = 185;
+
+    updateInfo();
+
+    document.getElementById("message").style.display =
+        "none";
+
+    document.getElementById("messageTitle").textContent =
+        "시간 순삭 블럭 피하기";
+
+    document.getElementById("start").textContent =
+        "게임 시작";
+
+    running = true;
+    lastTime = performance.now();
+
+    requestAnimationFrame(loop);
+}
+
+document.getElementById("start").addEventListener(
+    "click",
+    startGame
+);
+
+// 모바일 접속 안내
+if (window.matchMedia("(max-width: 768px)").matches) {
+    document.getElementById("mobileNotice").style.display = "flex";
+}
+
+document.getElementById("closeMobileNotice").addEventListener(
+    "click",
+    () => {
+        document.getElementById("mobileNotice").style.display = "none";
+    }
+);
+
+draw();
+</script>
+
+</body>
+</html>
