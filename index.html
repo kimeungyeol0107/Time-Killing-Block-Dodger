@@ -322,8 +322,10 @@ function spawnBlock(size, options = {}) {
         size,
         y: -BLOCK_HEIGHT,
         hit: false,
-        blink: options.blink || false,
+        blink: options.blink === true,
         lethal: options.lethal || false,
+
+        // 7단계 깜빡임 시간 초기화
         blinkTime: 0
     });
 
@@ -352,7 +354,6 @@ function startStage10Mission() {
     stage10Active = true;
     stage10Timer = 10;
 
-    // 맨 왼쪽 또는 맨 오른쪽 선택
     stage10TargetLane = Math.random() < 0.5 ? 0 : 6;
 }
 
@@ -360,16 +361,13 @@ function startStage10Mission() {
 function checkStage10Mission(delta) {
     if (!stage10Active || !running) return;
 
-    // 목표 칸에 도착하면 새로운 목표 생성
     if (player.lane === stage10TargetLane) {
         startStage10Mission();
         return;
     }
 
-    // 제한 시간 감소
     stage10Timer -= delta;
 
-    // 10초 안에 도착하지 못하면 사망
     if (stage10Timer <= 0) {
         stage10Timer = 0;
         lives = 0;
@@ -528,7 +526,6 @@ function draw() {
             50
         );
 
-        // 남은 시간 표시
         ctx.textAlign = "center";
         ctx.fillStyle = "#ffd400";
         ctx.font = "bold 30px Arial";
@@ -556,15 +553,15 @@ function draw() {
         const x = block.lane * CELL + 3;
         const width = block.size * CELL - 6;
 
-        
-     
-// 7단계 블럭은 2초 보이고 1초 안 보임
-        if (
-    block.blink &&
-    block.blinkTime % 3 >= 2
-) {
-    return;
-}
+        // 7단계: 2초 표시, 1초 숨김 반복
+        if (block.blink) {
+            const blinkCycle = block.blinkTime % 3;
+
+            // 2초가 지난 뒤부터 3초가 될 때까지 숨김
+            if (blinkCycle >= 2) {
+                return;
+            }
+        }
 
         ctx.fillStyle = block.lethal
             ? "#ff2222"
@@ -703,6 +700,7 @@ function loop(time) {
 
         block.y += blockSpeed * delta;
 
+        // 7단계 블럭 깜빡임 시간 증가
         if (block.blink) {
             block.blinkTime += delta;
         }
