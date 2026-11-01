@@ -107,7 +107,7 @@ button:active { background: #666; }
 <div id="info">
     <span>점수: <b id="score">0</b></span>
     <span>단계: <b id="stage">1</b></span>
-    <span>목숨: <b id="life">3/3</b></span>
+    <span>목숨: <b id="life">10/10</b></span>
 </div>
 
 <canvas id="game" width="420" height="600"></canvas>
@@ -154,7 +154,7 @@ const CELL = 60;
 const BLOCK_HEIGHT = 50;
 
 let score = 0;
-let lives = 3;
+let lives = 10;
 let stage = 1;
 let blocks = [];
 let running = false;
@@ -256,15 +256,7 @@ function createHackText() {
 
 // 정보 표시
 function updateInfo() {
-    const newStage = getStage();
-
-    if (newStage > stage) {
-        lives = newStage >= 5 ? 4 : 3;
-    }
-
-    stage = newStage;
-
-    const maxLives = stage >= 5 ? 4 : 3;
+    stage = getStage();
 
     document.getElementById("score").textContent =
         Math.floor(score);
@@ -273,7 +265,7 @@ function updateInfo() {
         stage;
 
     document.getElementById("life").textContent =
-        maxLives + "/" + lives;
+        "10/" + lives;
 }
 
 // 플레이어 이동
@@ -926,7 +918,7 @@ function startGame() {
     }
 
     score = 0;
-    lives = 3;
+    lives = 10;
     stage = 1;
     blocks = [];
 
