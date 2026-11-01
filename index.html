@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -140,6 +141,9 @@ button:active { background: #666; }
     </div>
 </div>
 
+<!-- 게임 배경음악 -->
+<audio id="bgm" src="sounds/bgm.mp3" loop preload="auto"></audio>
+
 <script>
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
@@ -156,6 +160,10 @@ let stage = 1;
 let blocks = [];
 let running = false;
 let lastTime = 0;
+
+// 배경음악
+const bgm = document.getElementById("bgm");
+bgm.volume = 0.4;
 
 // 5단계 이벤트
 let stage5Timer = 5;
@@ -609,6 +617,10 @@ function gameOver() {
 
     running = false;
 
+    // 배경음악 정지 및 처음으로 되돌리기
+    bgm.pause();
+    bgm.currentTime = 0;
+
     document.getElementById("messageTitle").textContent =
         "게임 오버!";
 
@@ -785,6 +797,13 @@ function startGame() {
 
     running = true;
     lastTime = performance.now();
+
+    // 게임 시작과 동시에 배경음악 재생
+    bgm.volume = 0.4;
+    bgm.currentTime = 0;
+    bgm.play().catch(error => {
+        console.log("배경음악 재생에 실패했습니다:", error);
+    });
 
     requestAnimationFrame(loop);
 }
