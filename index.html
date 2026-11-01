@@ -141,7 +141,6 @@ button:active { background: #666; }
     </div>
 </div>
 
-<!-- 게임 배경음악 -->
 <audio id="bgm" src="sounds/bgm.mp3" loop preload="auto"></audio>
 
 <script>
@@ -174,6 +173,15 @@ let rotationTime = 0;
 
 // 7단계 무지개 효과 시간
 let stage7Time = 0;
+
+// 11단계 시간
+let stage11Time = 0;
+
+// 11단계 초록색 화면 가림
+let stage11OverlayNext = 10;
+let stage11OverlayUntil = 0;
+let stage11OverlayX = 0;
+let stage11OverlayY = 0;
 
 // 무지개 색상
 const rainbowColors = [
@@ -209,11 +217,13 @@ let spawnCounts = {
     7: [0],
     8: [0],
     9: [0],
-    10: [0]
+    10: [0],
+    11: [0]
 };
 
 // 단계 판정
 function getStage() {
+    if (score >= 1850) return 11;
     if (score >= 1600) return 10;
     if (score >= 1400) return 9;
     if (score >= 1200) return 8;
@@ -226,10 +236,22 @@ function getStage() {
     return 1;
 }
 
-// 현재 7단계 무지개 색상
-function getRainbowColor() {
-    const index = Math.floor(stage7Time / 0.5) % rainbowColors.length;
+// 무지개 색상
+function getRainbowColor(time = stage7Time) {
+    const index = Math.floor(time / 0.5) % rainbowColors.length;
     return rainbowColors[index];
+}
+
+// 무작위 해킹 문자 생성
+function createHackText() {
+    const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+    let result = "";
+
+    for (let i = 0; i < 35; i++) {
+        result += chars[Math.floor(Math.random() * chars.length)];
+    }
+
+    return result;
 }
 
 // 정보 표시
@@ -342,7 +364,9 @@ function spawnBlock(size, options = {}) {
         y: -BLOCK_HEIGHT,
         hit: false,
         lethal: options.lethal || false,
-        special: false
+        special: false,
+        hacked: options.hacked || false,
+        hackText: options.hacked ? createHackText() : ""
     });
 
     return true;
@@ -468,6 +492,13 @@ function spawnByScore() {
             rules: [
                 {size: 1, interval: 1.5}
             ]
+        },
+
+        11: {
+            start: 1850,
+            rules: [
+                {size: 1, interval: 3, hacked: true}
+            ]
         }
     };
 
@@ -506,13 +537,30 @@ function checkCollision(block) {
     );
 }
 
+// 11단계 초록색 가림 효과 위치 설정
+function startStage11Overlay() {
+    const overlayWidth = W * 0.5;
+    const overlayHeight = H * 0.4;
+
+    stage11OverlayX = Math.random() * (W - overlayWidth);
+
+    // 화면 아래쪽 100px는 가리지 않음
+    const maxY = H - overlayHeight - 100;
+
+    stage11OverlayY = Math.random() * maxY;
+
+    stage11OverlayUntil = stage11Time + 4;
+}
+
 // 화면 그리기
 function draw() {
     const currentStage = getStage();
 
     // 배경색
     if (currentStage === 7) {
-        ctx.fillStyle = getRainbowColor();
+        ctx.fillStyle = getRainbowColor(stage7Time);
+    } else if (currentStage === 11) {
+        ctx.fillStyle = getRainbowColor(stage11Time);
     } else {
         ctx.fillStyle = "#202020";
     }
@@ -520,9 +568,10 @@ function draw() {
     ctx.fillRect(0, 0, W, H);
 
     // 열 구분선
-    ctx.strokeStyle = currentStage === 7
-        ? "rgba(255,255,255,0.45)"
-        : "#444";
+    ctx.strokeStyle =
+        currentStage === 7 || currentStage === 11
+            ? "rgba(255,255,255,0.45)"
+            : "#444";
 
     ctx.lineWidth = 1;
 
@@ -582,7 +631,9 @@ function draw() {
         const width = block.size * CELL - 6;
 
         if (currentStage === 7 && !block.special) {
-            ctx.fillStyle = getRainbowColor();
+            ctx.fillStyle = getRainbowColor(stage7Time);
+        } else if (currentStage === 11 && !block.special) {
+            ctx.fillStyle = getRainbowColor(stage11Time);
         } else {
             ctx.fillStyle = block.lethal
                 ? "#ff2222"
@@ -594,6 +645,31 @@ function draw() {
         ctx.strokeStyle = block.lethal ? "#ff7777" : "#fff";
         ctx.lineWidth = 2;
         ctx.strokeRect(x, block.y, width, BLOCK_HEIGHT);
+
+        // 11단계 해킹 문자
+        if (currentStage === 11 && block.hacked) {
+            ctx.save();
+
+            ctx.beginPath();
+            ctx.rect(x + 2, block.y + 2, width - 4, BLOCK_HEIGHT - 4);
+            ctx.clip();
+
+            ctx.fillStyle = "#071d0b";
+            ctx.font = "bold 7px monospace";
+            ctx.textAlign = "left";
+
+            const text = block.hackText;
+
+            for (let i = 0; i < 5; i++) {
+                ctx.fillText(
+                    text.substring(i * 7, i * 7 + 7),
+                    x + 3,
+                    block.y + 9 + i * 9
+                );
+            }
+
+            ctx.restore();
+        }
     });
 
     // 5단계 카운트다운
@@ -615,9 +691,52 @@ function draw() {
             H / 2 + 55
         );
     }
+
+    // 11단계 초록색 화면 가림
+    if (
+        currentStage === 11 &&
+        stage11Time < stage11OverlayUntil
+    ) {
+        const overlayWidth = W * 0.5;
+        const overlayHeight = H * 0.4;
+
+        ctx.fillStyle = "rgba(0,255,55,0.95)";
+        ctx.fillRect(
+            stage11OverlayX,
+            stage11OverlayY,
+            overlayWidth,
+            overlayHeight
+        );
+
+        // 가림 영역 안에 해킹 문자 표시
+        ctx.save();
+
+        ctx.beginPath();
+        ctx.rect(
+            stage11OverlayX,
+            stage11OverlayY,
+            overlayWidth,
+            overlayHeight
+        );
+        ctx.clip();
+
+        ctx.fillStyle = "#003b0b";
+        ctx.font = "bold 13px monospace";
+        ctx.textAlign = "left";
+
+        for (let i = 0; i < 12; i++) {
+            ctx.fillText(
+                createHackText(),
+                stage11OverlayX + 5,
+                stage11OverlayY + 15 + i * 18
+            );
+        }
+
+        ctx.restore();
+    }
 }
 
-// 6단계 회전 및 7단계 흔들림
+// 6단계 회전, 7단계 흔들림, 11단계 회전
 function updateRotation(delta) {
     const currentStage = getStage();
 
@@ -631,12 +750,19 @@ function updateRotation(delta) {
 
     } else if (currentStage === 7) {
 
-        // 좌우 흔들림
         const shakeX =
             Math.sin(stage7Time * Math.PI * 4) * 7;
 
         canvas.style.transform =
             `translateX(${shakeX}px)`;
+
+    } else if (currentStage === 11) {
+
+        // 6초마다 360도 회전
+        const angle = (stage11Time / 6) * 360;
+
+        canvas.style.transform =
+            `rotate(${angle}deg)`;
 
     } else {
         canvas.style.transform = "none";
@@ -694,6 +820,17 @@ function loop(time) {
         stage7Time = 0;
     }
 
+    // 11단계 시간 업데이트
+    if (currentStage === 11) {
+        stage11Time += delta;
+
+        // 10초마다 초록색 화면 가림 발동
+        if (stage11Time >= stage11OverlayNext) {
+            startStage11Overlay();
+            stage11OverlayNext += 10;
+        }
+    }
+
     // 10단계 진입 시 미션 시작
     if (currentStage === 10 && !stage10Active) {
         startStage10Mission();
@@ -706,7 +843,7 @@ function loop(time) {
 
     if (!running) return;
 
-    // 6단계 회전 및 7단계 흔들림
+    // 회전 및 흔들림
     updateRotation(delta);
 
     // 기본 블럭 속도
@@ -737,6 +874,7 @@ function loop(time) {
             ? speed * 2
             : (currentStage === 10 ? speed * 1.5 : speed);
 
+        // 11단계는 정상 속도 1.00배
         block.y += blockSpeed * delta;
 
         if (!block.hit && checkCollision(block)) {
@@ -794,6 +932,12 @@ function startGame() {
 
     rotationTime = 0;
     stage7Time = 0;
+    stage11Time = 0;
+
+    stage11OverlayNext = 10;
+    stage11OverlayUntil = 0;
+    stage11OverlayX = 0;
+    stage11OverlayY = 0;
 
     canvas.style.transform = "none";
 
@@ -812,7 +956,8 @@ function startGame() {
         7: [0],
         8: [0],
         9: [0],
-        10: [0]
+        10: [0],
+        11: [0]
     };
 
     player.lane = 3;
