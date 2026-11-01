@@ -177,12 +177,12 @@ let stage7Time = 0;
 
 // 무지개 색상
 const rainbowColors = [
-    "#ff3030", // 빨강
-    "#ff941e", // 주황
-    "#ffe52e", // 노랑
-    "#36d65b", // 초록
-    "#328bff", // 파랑
-    "#a34cff"  // 보라
+    "#ff3030",
+    "#ff941e",
+    "#ffe52e",
+    "#36d65b",
+    "#328bff",
+    "#a34cff"
 ];
 
 // 10단계 미션
@@ -228,7 +228,7 @@ function getStage() {
 
 // 현재 7단계 무지개 색상
 function getRainbowColor() {
-    const index = Math.floor(stage7Time / 0.5) % 6;
+    const index = Math.floor(stage7Time / 0.5) % rainbowColors.length;
     return rainbowColors[index];
 }
 
@@ -370,7 +370,6 @@ function startStage10Mission() {
     stage10Active = true;
     stage10Timer = 10;
 
-    // 맨 왼쪽 또는 맨 오른쪽 선택
     stage10TargetLane = Math.random() < 0.5 ? 0 : 6;
 }
 
@@ -509,9 +508,10 @@ function checkCollision(block) {
 
 // 화면 그리기
 function draw() {
+    const currentStage = getStage();
 
-    // 7단계 배경색 변경
-    if (stage === 7) {
+    // 배경색
+    if (currentStage === 7) {
         ctx.fillStyle = getRainbowColor();
     } else {
         ctx.fillStyle = "#202020";
@@ -520,8 +520,8 @@ function draw() {
     ctx.fillRect(0, 0, W, H);
 
     // 열 구분선
-    ctx.strokeStyle = stage === 7
-        ? "rgba(255,255,255,0.35)"
+    ctx.strokeStyle = currentStage === 7
+        ? "rgba(255,255,255,0.45)"
         : "#444";
 
     ctx.lineWidth = 1;
@@ -534,7 +534,7 @@ function draw() {
     }
 
     // 10단계 노란색 목표 블럭
-    if (stage === 10 && stage10Active) {
+    if (currentStage === 10 && stage10Active) {
         const targetX = stage10TargetLane * CELL + 5;
 
         ctx.fillStyle = "#ffd400";
@@ -581,8 +581,7 @@ function draw() {
         const x = block.lane * CELL + 3;
         const width = block.size * CELL - 6;
 
-        // 7단계 블럭 무지개 색상
-        if (stage === 7 && !block.special) {
+        if (currentStage === 7 && !block.special) {
             ctx.fillStyle = getRainbowColor();
         } else {
             ctx.fillStyle = block.lethal
@@ -598,7 +597,7 @@ function draw() {
     });
 
     // 5단계 카운트다운
-    if (stage === 5 && !bossActive) {
+    if (currentStage === 5 && !bossActive) {
         ctx.textAlign = "center";
 
         ctx.fillStyle = "rgba(255, 255, 255, 0.65)";
@@ -618,10 +617,11 @@ function draw() {
     }
 }
 
-// 6단계 회전 및 7단계 좌우 흔들림
+// 6단계 회전 및 7단계 흔들림
 function updateRotation(delta) {
+    const currentStage = getStage();
 
-    if (getStage() === 6) {
+    if (currentStage === 6) {
         rotationTime += delta;
 
         const angle =
@@ -629,9 +629,9 @@ function updateRotation(delta) {
 
         canvas.style.transform = `rotate(${angle}deg)`;
 
-    } else if (getStage() === 7) {
+    } else if (currentStage === 7) {
 
-        // 7단계: 화면이 좌우로 조금씩 흔들림
+        // 좌우 흔들림
         const shakeX =
             Math.sin(stage7Time * Math.PI * 4) * 7;
 
@@ -650,7 +650,6 @@ function gameOver() {
 
     running = false;
 
-    // 배경음악 정지 및 처음으로 되돌리기
     bgm.pause();
     bgm.currentTime = 0;
 
@@ -688,13 +687,10 @@ function loop(time) {
 
     const currentStage = getStage();
 
-    // 7단계 무지개 효과 시간 증가
+    // 7단계 무지개 시간 업데이트
     if (currentStage === 7) {
         stage7Time += delta;
-    }
-
-    // 7단계가 아니면 효과 시간 초기화
-    if (currentStage !== 7) {
+    } else {
         stage7Time = 0;
     }
 
@@ -731,15 +727,12 @@ function loop(time) {
         }
 
     } else {
-        // 1~4단계 및 6~10단계 블럭 생성
         spawnByScore();
     }
 
     // 블럭 이동 및 충돌
     blocks.forEach(block => {
 
-        // 5단계 특수 블럭은 2배
-        // 10단계 일반 블럭은 1.5배
         const blockSpeed = block.special
             ? speed * 2
             : (currentStage === 10 ? speed * 1.5 : speed);
@@ -749,7 +742,6 @@ function loop(time) {
         if (!block.hit && checkCollision(block)) {
             block.hit = true;
 
-            // 8단계 빨간 블럭은 닿으면 즉시 게임 오버
             if (block.lethal) {
                 lives = 0;
                 updateInfo();
@@ -765,7 +757,6 @@ function loop(time) {
         }
     });
 
-    // 게임 오버 상태면 종료
     if (!running) return;
 
     // 화면 밖 블럭 삭제
