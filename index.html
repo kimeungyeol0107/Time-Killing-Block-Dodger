@@ -556,13 +556,14 @@ function draw() {
         const x = block.lane * CELL + 3;
         const width = block.size * CELL - 6;
 
-        // 7단계 블럭은 0.5초 동안 안 보임
-        if (
-            block.blink &&
-            Math.floor(block.blinkTime / 0.5) % 2 === 0
-        ) {
-            return;
-        }
+        
+        // 7단계 블럭은 2초 보이고 1초 안 보임
+if (
+    block.blink &&
+    block.blinkTime % 3 >= 2
+) {
+    return;
+}
 
         ctx.fillStyle = block.lethal
             ? "#ff2222"
