@@ -172,6 +172,19 @@ let bossActive = false;
 // 6단계 회전
 let rotationTime = 0;
 
+// 7단계 무지개 효과 시간
+let stage7Time = 0;
+
+// 무지개 색상
+const rainbowColors = [
+    "#ff3030", // 빨강
+    "#ff941e", // 주황
+    "#ffe52e", // 노랑
+    "#36d65b", // 초록
+    "#328bff", // 파랑
+    "#a34cff"  // 보라
+];
+
 // 10단계 미션
 let stage10Active = false;
 let stage10TargetLane = -1;
@@ -211,6 +224,12 @@ function getStage() {
     if (score >= 250) return 3;
     if (score >= 100) return 2;
     return 1;
+}
+
+// 현재 7단계 무지개 색상
+function getRainbowColor() {
+    const index = Math.floor(stage7Time / 0.5) % 6;
+    return rainbowColors[index];
 }
 
 // 정보 표시
@@ -322,11 +341,8 @@ function spawnBlock(size, options = {}) {
         size,
         y: -BLOCK_HEIGHT,
         hit: false,
-        blink: options.blink === true,
         lethal: options.lethal || false,
-
-        // 7단계 깜빡임 시간 초기화
-        blinkTime: 0
+        special: false
     });
 
     return true;
@@ -354,6 +370,7 @@ function startStage10Mission() {
     stage10Active = true;
     stage10Timer = 10;
 
+    // 맨 왼쪽 또는 맨 오른쪽 선택
     stage10TargetLane = Math.random() < 0.5 ? 0 : 6;
 }
 
@@ -429,7 +446,7 @@ function spawnByScore() {
         7: {
             start: 1000,
             rules: [
-                {size: 1, interval: 2.5, blink: true}
+                {size: 1, interval: 2.5}
             ]
         },
 
@@ -492,10 +509,21 @@ function checkCollision(block) {
 
 // 화면 그리기
 function draw() {
-    ctx.clearRect(0, 0, W, H);
+
+    // 7단계 배경색 변경
+    if (stage === 7) {
+        ctx.fillStyle = getRainbowColor();
+    } else {
+        ctx.fillStyle = "#202020";
+    }
+
+    ctx.fillRect(0, 0, W, H);
 
     // 열 구분선
-    ctx.strokeStyle = "#444";
+    ctx.strokeStyle = stage === 7
+        ? "rgba(255,255,255,0.35)"
+        : "#444";
+
     ctx.lineWidth = 1;
 
     for (let i = 1; i < LANES; i++) {
@@ -553,19 +581,14 @@ function draw() {
         const x = block.lane * CELL + 3;
         const width = block.size * CELL - 6;
 
-        // 7단계: 2초 표시, 1초 숨김 반복
-        if (block.blink) {
-            const blinkCycle = block.blinkTime % 3;
-
-            // 2초가 지난 뒤부터 3초가 될 때까지 숨김
-            if (blinkCycle >= 2) {
-                return;
-            }
+        // 7단계 블럭 무지개 색상
+        if (stage === 7 && !block.special) {
+            ctx.fillStyle = getRainbowColor();
+        } else {
+            ctx.fillStyle = block.lethal
+                ? "#ff2222"
+                : (block.special ? "#fff" : "#aaa");
         }
-
-        ctx.fillStyle = block.lethal
-            ? "#ff2222"
-            : (block.special ? "#fff" : "#aaa");
 
         ctx.fillRect(x, block.y, width, BLOCK_HEIGHT);
 
@@ -595,8 +618,9 @@ function draw() {
     }
 }
 
-// 6단계 진자운동
+// 6단계 회전 및 7단계 좌우 흔들림
 function updateRotation(delta) {
+
     if (getStage() === 6) {
         rotationTime += delta;
 
@@ -604,8 +628,18 @@ function updateRotation(delta) {
             90 * Math.sin((rotationTime / 6) * Math.PI * 2);
 
         canvas.style.transform = `rotate(${angle}deg)`;
+
+    } else if (getStage() === 7) {
+
+        // 7단계: 화면이 좌우로 조금씩 흔들림
+        const shakeX =
+            Math.sin(stage7Time * Math.PI * 4) * 7;
+
+        canvas.style.transform =
+            `translateX(${shakeX}px)`;
+
     } else {
-        canvas.style.transform = "rotate(0deg)";
+        canvas.style.transform = "none";
         rotationTime = 0;
     }
 }
@@ -619,6 +653,8 @@ function gameOver() {
     // 배경음악 정지 및 처음으로 되돌리기
     bgm.pause();
     bgm.currentTime = 0;
+
+    canvas.style.transform = "none";
 
     document.getElementById("messageTitle").textContent =
         "게임 오버!";
@@ -652,6 +688,16 @@ function loop(time) {
 
     const currentStage = getStage();
 
+    // 7단계 무지개 효과 시간 증가
+    if (currentStage === 7) {
+        stage7Time += delta;
+    }
+
+    // 7단계가 아니면 효과 시간 초기화
+    if (currentStage !== 7) {
+        stage7Time = 0;
+    }
+
     // 10단계 진입 시 미션 시작
     if (currentStage === 10 && !stage10Active) {
         startStage10Mission();
@@ -664,7 +710,7 @@ function loop(time) {
 
     if (!running) return;
 
-    // 6단계 화면 회전
+    // 6단계 회전 및 7단계 흔들림
     updateRotation(delta);
 
     // 기본 블럭 속도
@@ -699,11 +745,6 @@ function loop(time) {
             : (currentStage === 10 ? speed * 1.5 : speed);
 
         block.y += blockSpeed * delta;
-
-        // 7단계 블럭 깜빡임 시간 증가
-        if (block.blink) {
-            block.blinkTime += delta;
-        }
 
         if (!block.hit && checkCollision(block)) {
             block.hit = true;
@@ -761,7 +802,9 @@ function startGame() {
     bossActive = false;
 
     rotationTime = 0;
-    canvas.style.transform = "rotate(0deg)";
+    stage7Time = 0;
+
+    canvas.style.transform = "none";
 
     // 10단계 미션 초기화
     stage10Active = false;
